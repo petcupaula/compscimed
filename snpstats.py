@@ -9,11 +9,9 @@ Licensed under: GNU General Public License v2
 
 import cPickle
 import os
+import sys
 
-genomeFileName = "genome_pa.txt"
-snpFileName = "snp_pa.p"
-
-def readTxtFile():
+def readTxtFile(genomeFileName):
 	"""Read a 23andMe txt file with TAB-separated snp data into a list and 
 	dump the structure using pickle.
 	"""
@@ -24,16 +22,19 @@ def readTxtFile():
 
 	snps = [["rsid","chromosome","position","genotype"]]
 	for i,line in enumerate(allLines):
-		if i%100==0: print i
+		#if i%1000==0: print i
 		if not line[0]=="#":
 			info = line.rstrip().split('\t')
 			snps.append(info)
-
+	
+	snpFileName = genomeFileName.replace(".txt","_snp.p")
 	snpFile = open(snpFileName,"wb")
 	cPickle.dump(snps,snpFile)
 	snpFile.close()
+	
+	return snpFileName
 
-def printStatistics():
+def printStatistics(snpFileName):
 	"""Read the dumped SNP data and print some statistics
 	"""
 	
@@ -73,9 +74,28 @@ def printStatistics():
 	for elem in snpsPerChrom:
 		print elem+" "+" ".join(str(snpsPerChrom[elem])[1:-1].split(","))
 
-if not os.path.isfile(snpFileName):
-	readTxtFile()
-	
-printStatistics()
-
-
+if len(sys.argv)!=1 and len(sys.argv)!=2:
+	print "Usage: python snpstats.py"
+	print "Usage: python snpstats.py genome_23andMe.txt"
+	print "Usage: python snpstats.py snps.p"
+	exit(0)
+elif len(sys.argv)==1:
+	#Default behaviour
+	genomeFileName = "genome_pa.txt"
+	snpFileName = "genome_pa_snp.p"
+	if not os.path.isfile(genomeFileName):
+		print "File not found: "+genomeFileName
+		exit(0)
+	if not os.path.isfile(snpFileName):	
+		snpFileName = readTxtFile(genomeFileName)
+	printStatistics(snpFileName)
+elif len(sys.argv)==2:
+	if not sys.argv[1].endswith('.txt') and not sys.argv[1].endswith('.p'):
+		print "Not a valid filetype. Use .txt for your 23andme datafile."
+		exit(0)
+	if sys.argv[1].endswith('.txt'):
+		genomeFileName = sys.argv[1]
+		snpFileName = readTxtFile(genomeFileName)
+	else:
+		snpFileName = sys.argv[1]
+	printStatistics(snpFileName)
