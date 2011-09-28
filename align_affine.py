@@ -1,10 +1,13 @@
 """This is a Python script for aligning two aminoacid sequences 
 using the Needleman-Wunch algorithm for global alignment, and the
-Smith-Waterman algorithm for local alignment. It uses a linear 
+Smith-Waterman algorithm for local alignment. It uses an affine 
 gap model.
 
+Not yet finished. Still having some problems with the Iy and Ix
+matrices. And no backtracking yet. And no local alignment. Yet. 
+
 Author: Paula Petcu
-Created: 24 September 2011
+Created: 28 September 2011
 Licensed under: GNU General Public License v2
 """
 
@@ -13,6 +16,8 @@ import sys
 from pprint import pprint
 import pickle
 from sets import Set
+
+MININF = float("-inf") # minus infinity in Pyhton
 
 scoringMatrices = ["blosum50"] #Currently only supporting BLOSUM50
 aminoAcids = "ARNDCQEGHILKMFPSTWYV"
@@ -38,7 +43,7 @@ def readScoringMatrix(matrixName):
 		pckl_file.close()
 	return matrix
 	
-def areArgumentsValid(seqA,seqB,gap,match,mismatch,matrixName):
+def areArgumentsValid(seqA,seqB,gap,expand,match,mismatch,matrixName):
 	"""Verify the validity of the arguments
 	"""
 	
@@ -51,8 +56,9 @@ def areArgumentsValid(seqA,seqB,gap,match,mismatch,matrixName):
 		return False
 	try:
 		int(gap)
+		int(expand)
 	except:
-		print "The gap value should be a positive integer."
+		print "The gap and expand values should be positive integers."
 		return False
 	if match!=None and mismatch!=None:
 		try:
@@ -66,15 +72,16 @@ def areArgumentsValid(seqA,seqB,gap,match,mismatch,matrixName):
 		return False
 	return True
 	
-def needle(seqA,seqB,gap,match=None,mismatch=None,matrixName=None):
+def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 	"""Apply Needleman-Wunch on two AA sequences (global alignment)
-	Using the linear gap model.
+	Using the affine gap model.
 	"""
 	
 	#Verify the arguments
-	if not areArgumentsValid(seqA,seqB,gap,match,mismatch,matrixName):
+	if not areArgumentsValid(seqA,seqB,gap,extend,match,mismatch,matrixName):
 		return
 	gap=int(gap)
+	extend=int(extend)
 	if match!=None and mismatch!=None:
 		match = int(match)
 		mismatch = int(mismatch)
@@ -90,29 +97,58 @@ def needle(seqA,seqB,gap,match=None,mismatch=None,matrixName=None):
 	print "Here is the matrix of pair scores for the two sequences: "
 	pprint(pairScores)
 	
-	#Generate the dynamic programming matrix (global align., linear gap model)
-	# - initialize the first row of the dp matrix using the gap value 
-	dpMatrix = []
-	dpMatrix.append(range(0,-gap*(len(seqA)+1),-gap))
-	dpMatrixTrack = []
-	dpMatrixTrack.append([trace[2]]*(len(seqA)+1)) # - put '-' on first row
+	#Generate the dynamic programming matrix (global align., affine gap model)
+	Iy = []
+	M = []
+	Ix = []
+	# - initialize M, Ix, and Iy for first row
+	Iy.append([MININF]*(len(seqA)+1))
+	M.append([0])
+	M[0] += [MININF]*len(seqA)
+	Ix.append([MININF])
+	Ix[0] += range(-gap,-gap-extend*len(seqA),-extend)
+	#dpMatrixTrack = []
+	#dpMatrixTrack.append([trace[2]]*(len(seqA)+1)) # put '-' on first row
 	for i,aB in enumerate(seqB):
-		dpMatrix.append([])
-		dpMatrix[i+1].append(-gap*(i+1))
-		dpMatrixTrack.append([])
-		dpMatrixTrack[i+1].append(trace[1]) # - put '|' on first column
+		Iy.append([])
+		M.append([])
+		Ix.append([])
+		# - initialize M, Ix, and Iy for first column
+		Iy[i+1].append(-gap-extend*i)
+		M[i+1].append(MININF)
+		Ix[i+1].append(MININF)
+		#dpMatrixTrack.append([])
+		#dpMatrixTrack[i+1].append(trace[1]) # put '|' on first column
 		for j,aA in enumerate(seqA):
-			maxArgs = [dpMatrix[i][j] + pairScores[i][j],\
-				dpMatrix[i][j+1] - gap,\
-				dpMatrix[i+1][j] - gap]
+			maxArgs_Ix = [M[i][j+1]-gap,\
+						Ix[i][j+1]-extend]
+			maxVal_Ix = max(maxArgs_Ix)
+			maxArgs_Iy = [M[i+1][j]-gap,\
+						Iy[i+1][j]-extend]
+			maxVal_Iy = max(maxArgs_Iy)
+			maxArgs = [M[i][j] + pairScores[i][j],\
+				Ix[i][j] + pairScores[i][j],\
+				Iy[i][j] + pairScores[i][j]]
 			maxVal = max(maxArgs)
-			dpMatrix[i+1].append(maxVal)
-			dpMatrixTrack[i+1].append(trace[maxArgs.index(maxVal)])
-	print "Here is the global dynamic programming matrix for the two sequences: "
-	pprint(dpMatrix)
-	print "Here is the global dynamic programming traceback for the two sequences: "
-	pprint(dpMatrixTrack)
+			Iy[i+1].append(maxVal_Iy)
+			M[i+1].append(maxVal)
+			Ix[i+1].append(maxVal_Ix)
+			#dpMatrix[i+1].append(maxVal)
+			#dpMatrixTrack[i+1].append(trace[maxArgs.index(maxVal)])
+	#print "Here is the global dynamic programming matrix for the two sequences: "
+	#pprint(dpMatrix)
+	#print "Here is the global dynamic programming traceback for the two sequences: "
+	#pprint(dpMatrixTrack)
 	
+	print "Iy="
+	pprint(Iy)
+	print "M="
+	pprint(M)
+	print "Ix="
+	pprint(Ix)
+	
+	
+	"""
 	#Backtracking
 	# Start from bottom right corner
 	loc = (len(seqB),len(seqA))
@@ -136,83 +172,7 @@ def needle(seqA,seqB,gap,match=None,mismatch=None,matrixName=None):
 	print "Here is a global alignment:"
 	#pprint(alignment)
 	for i in range(len(alignment)): print ''.join(alignment[i])
-	
-	return
-
-def water(seqA,seqB,gap,match=None,mismatch=None,matrixName=None):
-	"""Apply Smith-Waterman on two AA sequences (local alignment).
-	Using linear gap model.
 	"""
-	
-	#Verify the arguments
-	if not areArgumentsValid(seqA,seqB,gap,match,mismatch,matrixName):
-		return
-	gap=int(gap)
-	if match!=None and mismatch!=None:
-		match = int(match)
-		mismatch = int(mismatch)
-	
-	print "Aligning sequence "+seqA+" with sequence "+seqB+" using Smith-Waterman:"
-		
-	#Compute the matrix of pair scores
-	if matrixName==None:
-		pairScores = createMatrixOfPairScores(seqA,seqB,match,mismatch)
-	else:
-		blosum50 = readScoringMatrix(matrixName)
-		pairScores = createMatrixOfPairScores(seqA,seqB,matrix=blosum50)
-	print "Here is the matrix of pair scores for the two sequences: "
-	pprint(pairScores)
-	
-	#Generate the dynamic programming matrix (local align., linear gap model)
-	# - initialize the first row of the dp matrix with zeros
-	dpMatrix = []
-	dpMatrix.append([0]*(len(seqA)+1))
-	dpMatrixTrack = []
-	dpMatrixTrack.append([trace[2]]*(len(seqA)+1)) # put '-' on first row
-	overallMax = [-1,[]] # compute this maximum while generating the dp matrix 
-	for i,aB in enumerate(seqB):
-		dpMatrix.append([])
-		dpMatrix[i+1].append(0) # - put zeros on first column
-		dpMatrixTrack.append([])
-		dpMatrixTrack[i+1].append(trace[1]) # - put '|' on first column
-		for j,aA in enumerate(seqA):
-			maxArgs = [dpMatrix[i][j] + pairScores[i][j],\
-				dpMatrix[i][j+1] - gap,\
-				dpMatrix[i+1][j] - gap,\
-				0]
-			maxVal = max(maxArgs)
-			dpMatrix[i+1].append(maxVal)
-			dpMatrixTrack[i+1].append(trace[maxArgs.index(maxVal)])
-			if maxVal > overallMax[0]:
-				overallMax[0] = maxVal
-				overallMax[1] = (i+1,j+1)
-	print "Here is the local dynamic programming matrix for the two sequences: "
-	pprint(dpMatrix)
-	print "Here is the local dynamic programming traceback for the two sequences: "
-	pprint(dpMatrixTrack)
-	
-	#Backtracking
-	# Start from the maximum value from the dp matrix
-	loc = overallMax[1]
-	alignment =[[],[]]
-	# Go towards the top left corner until a zero value is found
-	while dpMatrix[loc[0]][loc[1]] != 0:
-		direction = dpMatrixTrack[loc[0]][loc[1]]
-		if direction=='-':
-			alignment[0].insert(0,seqA[loc[1]-1])
-			alignment[1].insert(0,'-')
-			loc = (loc[0],loc[1]-1)
-		elif direction=='|':
-			alignment[0].insert(0,'-')
-			alignment[1].insert(0,seqB[loc[0]-1])
-			loc = (loc[0]-1,loc[1])
-		elif direction=='\\':
-			alignment[0].insert(0,seqA[loc[1]-1])
-			alignment[1].insert(0,seqB[loc[0]-1])
-			loc = (loc[0]-1,loc[1]-1)		
-	print "Here is a local alignment:"
-	#pprint(alignment)
-	for i in range(len(alignment)): print ''.join(alignment[i])
 	
 	return
 
@@ -237,25 +197,23 @@ def createMatrixOfPairScores(seqA,seqB,match=None,mismatch=None,matrix=None):
 				pairScores[i].append(int(matrix[matrix[0].index(aA)][matrix[0].index(aB)]))			
 	return pairScores
 
-if len(sys.argv)!=1 and len(sys.argv)!=6 and len(sys.argv)!=7:
-	print "Usage: python align.py"
-	print "Usage: python align.py global blossum50 gap HEAGAWGHEE PAWHEAE"
-	print "Usage: python align.py global match mismatch gap HEAGAWGHEE PAWHEAE"
+if len(sys.argv)!=1 and len(sys.argv)!=7 and len(sys.argv)!=8:
+	print "Usage: python align_affine.py"
+	print "Usage: python align.py global blossum50 gap extend HEAGAWGHEE PAWHEAE"
+	print "Usage: python align.py global match mismatch gap extend HEAGAWGHEE PAWHEAE"
 	exit(0)
 elif len(sys.argv)==1:
 	#Default behaviour
 	seqA = "HEAGAWGHEE"
 	seqB = "PAWHEAE"
 	#needle(seqA,seqB,gap=2,match=1,mismatch=-2)
-	needle(seqA,seqB,gap=8,matrixName="blosum50")
-	seqA = "GHGKKVADALTN"
-	seqB = "GHKRLLT"
-	needle(seqA,seqB,gap=8,matrixName="blosum50")
-	water(seqA,seqB,gap=8,matrixName="blosum50")
-elif len(sys.argv)==6 or len(sys.argv)==7:
+	needle(seqA,seqB,gap=10,extend=1,matrixName="blosum50")
+	#seqA = "GHGKKVADALTN"
+	#seqB = "GHKRLLT"
+	#needle(seqA,seqB,gap=8,matrixName="blosum50")
+	#water(seqA,seqB,gap=8,matrixName="blosum50")
+'''elif len(sys.argv)==6 or len(sys.argv)==7:
 	#Alignment according to the received arguments
-	# global or local
-	#   using matrix or match/mismatch values
 	if sys.argv[1]=="global":
 		if len(sys.argv)==6:
 			needle(sys.argv[4],sys.argv[5],gap=sys.argv[3],matrixName=sys.argv[2])
@@ -270,3 +228,4 @@ elif len(sys.argv)==6 or len(sys.argv)==7:
 		print "Usage: python align.py global blossum50 gap HEAGAWGHEE PAWHEAE"
 		print sys.argv[1]+" is not a valid arg. Use global or local."
 		exit(0)
+'''
