@@ -228,6 +228,166 @@ def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 	return
 
 def water(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
+	"""Apply Smith-Waterman on two AA sequences (local alignment)
+	Using the affine gap model.
+	
+	Notations for the backtracking matrices:
+	M(i,j) = 	Iy(i-1,j-1)+s 	|
+				M(i-1,j-1)+s	\\
+				Ix(i-1,j-1)+s	-
+	Ix(i,j) =	M(i-1,j)-d		|
+				Ix(i-1,j)+e		\\
+				top margin		--
+	Iy(i,j) = 	Iy(i,j-1)-e		-
+				M(i,j-1)-d		/
+				left margin		||
+	"""
+	
+	#Verify the arguments
+	if not areArgumentsValid(seqA,seqB,gap,extend,match,mismatch,matrixName):
+		return
+	gap=int(gap)
+	extend=int(extend)
+	if match!=None and mismatch!=None:
+		match = int(match)
+		mismatch = int(mismatch)
+	
+	print "Aligning sequence "+seqA+" with sequence "+seqB+" using Smith-Waterman:"
+	
+	#Compute the matrix of pair scores
+	if matrixName==None:
+		pairScores = createMatrixOfPairScores(seqA,seqB,match,mismatch)
+	else:
+		blosum50 = readScoringMatrix(matrixName)
+		pairScores = createMatrixOfPairScores(seqA,seqB,matrix=blosum50)
+	print "Here is the matrix of pair scores for the two sequences: "
+	pprint(pairScores)
+	
+	#Generate the dynamic programming matrix (global align., affine gap model)
+	Iy = []
+	M = []
+	Ix = []
+	# - initialize M, Ix, and Iy for first row
+	Iy.append([MININF]*(len(seqA)+1))
+	M.append([0]*(len(seqA)+1))
+	Ix.append([MININF]*(len(seqA)+1))
+	# - initialize tracking matrices
+	trackIy = []
+	trackM = []
+	trackIx = []
+	trackIy.append([' ']*(len(seqA)+1)) # put ' ' on first Iy row
+	trackM.append([' ']*(len(seqA)+1)) # put ' ' on first M row
+	trackIx.append([' ']+['--']*(len(seqA))) # put '--' on first Ix row
+	overallMax = [-1,[]] # compute this maximum while generating the dp matrix
+	for i,aB in enumerate(seqB):
+		Iy.append([])
+		M.append([])
+		Ix.append([])
+		# - initialize M, Ix, and Iy for first column
+		Iy[i+1].append(MININF)
+		M[i+1].append(0)
+		Ix[i+1].append(MININF)
+		# - initialize tracking matrices for first column
+		trackIy.append([])
+		trackIy[i+1].append('||') # put '||' on first Iy column
+		trackM.append([])
+		trackM[i+1].append(' ') # put ' ' on first M column
+		trackIx.append([])
+		trackIx[i+1].append(' ') # put ' ' on first Ix column
+		for j,aA in enumerate(seqA):
+			maxArgs_Ix = [M[i][j+1]-gap,\
+						Ix[i][j+1]-extend]
+			maxVal_Ix = max(maxArgs_Ix)
+			maxArgs_Iy = [M[i+1][j]-gap,\
+						Iy[i+1][j]-extend]
+			maxVal_Iy = max(maxArgs_Iy)
+			maxArgs = [M[i][j] + pairScores[i][j],\
+				Ix[i][j] + pairScores[i][j],\
+				Iy[i][j] + pairScores[i][j],\
+				0]
+			maxVal = max(maxArgs)
+			Iy[i+1].append(maxVal_Iy)
+			M[i+1].append(maxVal)
+			Ix[i+1].append(maxVal_Ix)
+			# - update tracking matrices
+			if maxArgs_Iy.index(maxVal_Iy) == 0: trackIy[i+1].append('/')
+			else: trackIy[i+1].append('-')
+			if maxArgs.index(maxVal) == 0: trackM[i+1].append('\\')
+			elif maxArgs.index(maxVal) == 1: trackM[i+1].append('-')
+			elif maxArgs.index(maxVal) == 2: trackM[i+1].append('|')
+			else: trackM[i+1].append(' ')
+			if maxArgs_Ix.index(maxVal_Ix) == 0: trackIx[i+1].append('|')
+			else: trackIx[i+1].append('\\')
+			# - update the overall maximu value
+			if maxVal > overallMax[0]:
+				overallMax[0] = maxVal
+				overallMax[1] = (i+1,j+1)
+	
+	print "Here is the local dynamic programming matrix for the two sequences: "
+	print "Iy="
+	pprint(Iy)
+	print "M="
+	pprint(M)
+	print "Ix="
+	pprint(Ix)
+	
+	print "Here is the local dynamic programming traceback for the two sequences: "
+	print "trackIy="
+	pprint(trackIy)
+	print "trackM="
+	pprint(trackM)
+	print "trackIx="
+	pprint(trackIx)
+	
+	#Backtracking
+	# Start from the maximum value from the dp matrix
+	loc = overallMax[1]
+	# which = 0 => Iy, which = 1 => M, which = 2 => Ix
+	which = 1 #assume M is always the max
+	alignment =[[],[]]
+	# Go towards the top left corner until a zero value is found
+	while loc != (0,0):
+		if which==1 and M[loc[0]][loc[1]] == 0:
+			break
+		print loc
+		print alignment
+		if loc[0]==0 or loc[1]==0: #margin hit
+			if trackIx[loc[0]][loc[1]]=='--': # top margin hit, go left
+				which = 2
+				alignment[0].insert(0,seqA[loc[1]-1])
+				alignment[1].insert(0,'-')
+				loc = (loc[0],loc[1]-1)
+			elif trackIy[loc[0]][loc[1]]=='||': # left margin hit, go up
+				which = 1
+				alignment[0].insert(0,'-')
+				alignment[1].insert(0,seqB[loc[0]-1])
+				loc = (loc[0]-1,loc[1])
+		elif which==0: #Iy
+			direction = trackIy[loc[0]][loc[1]]
+			if direction=='-': which = 0 #from Iy
+			elif direction=='/': which = 1 #from M
+			alignment[0].insert(0,seqA[loc[1]-1])
+			alignment[1].insert(0,'-')
+			loc = (loc[0],loc[1]-1)
+		elif which==2: #Ix
+			direction = trackIx[loc[0]][loc[1]]
+			if direction=='|': which = 1 #from M
+			elif direction=='\\': which = 2 #from Ix
+			alignment[0].insert(0,'-')
+			alignment[1].insert(0,seqB[loc[0]-1])
+			loc = (loc[0]-1,loc[1])
+		elif which==1: #M
+			direction = trackM[loc[0]][loc[1]]
+			alignment[0].insert(0,seqA[loc[1]-1])
+			alignment[1].insert(0,seqB[loc[0]-1])
+			loc = (loc[0]-1,loc[1]-1)
+			if direction=='|': which = 0 #from Iy
+			elif direction=='\\': which = 1 #from M
+			elif direction=='-': which = 2 #from Ix
+	print "Here is a local alignment:"
+	#pprint(alignment)
+	for i in range(len(alignment)): print ''.join(alignment[i])
+	
 	return
 
 def createMatrixOfPairScores(seqA,seqB,match=None,mismatch=None,matrix=None):
@@ -261,8 +421,8 @@ elif len(sys.argv)==1:
 	# first example
 	seqA = "HEAGAWGHEE"
 	seqB = "PAWHEAE"
-	#needle(seqA,seqB,gap=2,match=1,mismatch=-2)
 	needle(seqA,seqB,gap=10,extend=1,matrixName="blosum50")
+	water(seqA,seqB,gap=10,extend=1,matrixName="blosum50")
 	# a second example
 	seqA = "GHGKKVADALTN"
 	seqB = "GHKRLLT"
