@@ -107,8 +107,13 @@ def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 	M[0] += [MININF]*len(seqA)
 	Ix.append([MININF])
 	Ix[0] += range(-gap,-gap-extend*len(seqA),-extend)
-	#dpMatrixTrack = []
-	#dpMatrixTrack.append([trace[2]]*(len(seqA)+1)) # put '-' on first row
+	# - initialize tracking matrices
+	trackIy = []
+	trackM = []
+	trackIx = []
+	trackIy.append([trace[3]]*(len(seqA)+1)) # put ' ' on first Iy row
+	trackM.append([trace[3]]*(len(seqA)+1)) # put ' ' on first M row
+	trackIx.append([' ']+['--']*(len(seqA))) # put '--' on first Ix row
 	for i,aB in enumerate(seqB):
 		Iy.append([])
 		M.append([])
@@ -117,8 +122,13 @@ def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 		Iy[i+1].append(-gap-extend*i)
 		M[i+1].append(MININF)
 		Ix[i+1].append(MININF)
-		#dpMatrixTrack.append([])
-		#dpMatrixTrack[i+1].append(trace[1]) # put '|' on first column
+		# - initialize tracking matrices for first column
+		trackIy.append([])
+		trackIy[i+1].append('||') # put '||' on first Iy column
+		trackM.append([])
+		trackM[i+1].append(trace[3]) # put ' ' on first M column
+		trackIx.append([])
+		trackIx[i+1].append(trace[3]) # put ' ' on first Ix column
 		for j,aA in enumerate(seqA):
 			maxArgs_Ix = [M[i][j+1]-gap,\
 						Ix[i][j+1]-extend]
@@ -133,13 +143,16 @@ def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 			Iy[i+1].append(maxVal_Iy)
 			M[i+1].append(maxVal)
 			Ix[i+1].append(maxVal_Ix)
-			#dpMatrix[i+1].append(maxVal)
-			#dpMatrixTrack[i+1].append(trace[maxArgs.index(maxVal)])
-	#print "Here is the global dynamic programming matrix for the two sequences: "
-	#pprint(dpMatrix)
-	#print "Here is the global dynamic programming traceback for the two sequences: "
-	#pprint(dpMatrixTrack)
+			# - update tracking matrices
+			if maxArgs_Iy.index(maxVal_Iy) == 0: trackIy[i+1].append('/')
+			else: trackIy[i+1].append('-')
+			if maxArgs.index(maxVal) == 0: trackM[i+1].append('\\')
+			elif maxArgs.index(maxVal) == 1: trackM[i+1].append('-')
+			else: trackM[i+1].append('|')
+			if maxArgs_Ix.index(maxVal_Ix) == 0: trackIx[i+1].append('|')
+			else: trackIx[i+1].append('\\')
 	
+	print "Here is the global dynamic programming matrix for the two sequences: "
 	print "Iy="
 	pprint(Iy)
 	print "M="
@@ -147,32 +160,62 @@ def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 	print "Ix="
 	pprint(Ix)
 	
+	print "Here is the global dynamic programming traceback for the two sequences: "
+	print "trackIy="
+	pprint(trackIy)
+	print "trackM="
+	pprint(trackM)
+	print "trackIx="
+	pprint(trackIx)
 	
-	"""
 	#Backtracking
 	# Start from bottom right corner
 	loc = (len(seqB),len(seqA))
+	maxArgs = [Iy[loc[0]][loc[1]], M[loc[0]][loc[1]], Ix[loc[0]][loc[1]]]
+	score = max(maxArgs)
+	which = maxArgs.index(score) 
 	alignment =[[],[]]
 	# Go towards the top left corner
 	while loc != (0,0):
+		#print loc, which
 		#print alignment
-		direction = dpMatrixTrack[loc[0]][loc[1]]
-		if direction=='-':
+		if which==0:
+			direction = trackIy[loc[0]][loc[1]]
+			if direction=='-' or direction=='/': 
+				if direction=='-': which = 0 #from Iy
+				elif direction=='/': which = 1 #from M
+				alignment[0].insert(0,seqA[loc[1]-1])
+				alignment[1].insert(0,'-')
+				loc = (loc[0],loc[1]-1)
+			elif direction=='||': #margin hit, go up
+				which = 1
+				alignment[0].insert(0,'-')
+				alignment[1].insert(0,seqB[loc[0]-1])
+				loc = (loc[0]-1,loc[1])
+		elif which==2:
+			direction = trackIx[loc[0]][loc[1]]
+			if direction=='|' or direction=='\\':
+				if direction=='|': which = 1 #from M
+				elif direction=='\\': which = 2 #from Ix
+				alignment[0].insert(0,'-')
+				alignment[1].insert(0,seqB[loc[0]-1])
+				loc = (loc[0]-1,loc[1])
+			elif direction=='--': # margin hit, go left
+				which = 2
+				alignment[0].insert(0,seqA[loc[1]-1])
+				alignment[1].insert(0,'-')
+				loc = (loc[0],loc[1]-1)
+		elif which==1:
+			direction = trackM[loc[0]][loc[1]]
 			alignment[0].insert(0,seqA[loc[1]-1])
-			alignment[1].insert(0,'-')
-			loc = (loc[0],loc[1]-1)
-		elif direction=='|':
-			alignment[0].insert(0,'-')
 			alignment[1].insert(0,seqB[loc[0]-1])
-			loc = (loc[0]-1,loc[1])
-		elif direction=='\\':
-			alignment[0].insert(0,seqA[loc[1]-1])
-			alignment[1].insert(0,seqB[loc[0]-1])
-			loc = (loc[0]-1,loc[1]-1)		
+			loc = (loc[0]-1,loc[1]-1)
+			if direction=='|': which = 0 #from Iy
+			elif direction=='\\': which = 1 #from M
+			elif direction=='-': which = 2 #from Ix
 	print "Here is a global alignment:"
 	#pprint(alignment)
 	for i in range(len(alignment)): print ''.join(alignment[i])
-	"""
 	
 	return
 
@@ -204,14 +247,19 @@ if len(sys.argv)!=1 and len(sys.argv)!=7 and len(sys.argv)!=8:
 	exit(0)
 elif len(sys.argv)==1:
 	#Default behaviour
+	# first example
 	seqA = "HEAGAWGHEE"
 	seqB = "PAWHEAE"
 	#needle(seqA,seqB,gap=2,match=1,mismatch=-2)
 	needle(seqA,seqB,gap=10,extend=1,matrixName="blosum50")
-	#seqA = "GHGKKVADALTN"
-	#seqB = "GHKRLLT"
-	#needle(seqA,seqB,gap=8,matrixName="blosum50")
-	#water(seqA,seqB,gap=8,matrixName="blosum50")
+	# a second example
+	seqA = "GHGKKVADALTN"
+	seqB = "GHKRLLT"
+	needle(seqA,seqB,gap=10,extend=1,matrixName="blosum50")
+	# a third example
+	seqA = "VLSPADK"
+	seqB = "HLAESK"
+	needle(seqA,seqB,gap=12,extend=2,matrixName="blosum50")
 '''elif len(sys.argv)==6 or len(sys.argv)==7:
 	#Alignment according to the received arguments
 	if sys.argv[1]=="global":
