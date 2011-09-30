@@ -3,8 +3,7 @@ using the Needleman-Wunch algorithm for global alignment, and the
 Smith-Waterman algorithm for local alignment. It uses an affine 
 gap model.
 
-Not yet finished. Still having some problems with the Iy and Ix
-matrices. And no backtracking yet. And no local alignment. Yet. 
+Not yet finished. No local alignment. Yet. 
 
 Author: Paula Petcu
 Created: 28 September 2011
@@ -21,7 +20,6 @@ MININF = float("-inf") # minus infinity in Pyhton
 
 scoringMatrices = ["blosum50"] #Currently only supporting BLOSUM50
 aminoAcids = "ARNDCQEGHILKMFPSTWYV"
-trace = {-1:'-',0:'\\',1:'|',2:'-',3:' '}
 
 def readScoringMatrix(matrixName):
 	"""Read the scoring matrix (either from a pickle file, if it exists, or from 
@@ -75,6 +73,17 @@ def areArgumentsValid(seqA,seqB,gap,expand,match,mismatch,matrixName):
 def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 	"""Apply Needleman-Wunch on two AA sequences (global alignment)
 	Using the affine gap model.
+	
+	Notations for the backtracking matrices:
+	M(i,j) = 	Iy(i-1,j-1)+s 	|
+				M(i-1,j-1)+s	\\
+				Ix(i-1,j-1)+s	-
+	Ix(i,j) =	M(i-1,j)-d		|
+				Ix(i-1,j)+e		\\
+				top margin		--
+	Iy(i,j) = 	Iy(i,j-1)-e		-
+				M(i,j-1)-d		/
+				left margin		||
 	"""
 	
 	#Verify the arguments
@@ -111,8 +120,8 @@ def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 	trackIy = []
 	trackM = []
 	trackIx = []
-	trackIy.append([trace[3]]*(len(seqA)+1)) # put ' ' on first Iy row
-	trackM.append([trace[3]]*(len(seqA)+1)) # put ' ' on first M row
+	trackIy.append([' ']*(len(seqA)+1)) # put ' ' on first Iy row
+	trackM.append([' ']*(len(seqA)+1)) # put ' ' on first M row
 	trackIx.append([' ']+['--']*(len(seqA))) # put '--' on first Ix row
 	for i,aB in enumerate(seqB):
 		Iy.append([])
@@ -126,9 +135,9 @@ def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 		trackIy.append([])
 		trackIy[i+1].append('||') # put '||' on first Iy column
 		trackM.append([])
-		trackM[i+1].append(trace[3]) # put ' ' on first M column
+		trackM[i+1].append(' ') # put ' ' on first M column
 		trackIx.append([])
-		trackIx[i+1].append(trace[3]) # put ' ' on first Ix column
+		trackIx[i+1].append(' ') # put ' ' on first Ix column
 		for j,aA in enumerate(seqA):
 			maxArgs_Ix = [M[i][j+1]-gap,\
 						Ix[i][j+1]-extend]
@@ -177,34 +186,33 @@ def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 	alignment =[[],[]]
 	# Go towards the top left corner
 	while loc != (0,0):
-		#print loc, which
-		#print alignment
-		if which==0:
-			direction = trackIy[loc[0]][loc[1]]
-			if direction=='-' or direction=='/': 
-				if direction=='-': which = 0 #from Iy
-				elif direction=='/': which = 1 #from M
-				alignment[0].insert(0,seqA[loc[1]-1])
-				alignment[1].insert(0,'-')
-				loc = (loc[0],loc[1]-1)
-			elif direction=='||': #margin hit, go up
-				which = 1
-				alignment[0].insert(0,'-')
-				alignment[1].insert(0,seqB[loc[0]-1])
-				loc = (loc[0]-1,loc[1])
-		elif which==2:
-			direction = trackIx[loc[0]][loc[1]]
-			if direction=='|' or direction=='\\':
-				if direction=='|': which = 1 #from M
-				elif direction=='\\': which = 2 #from Ix
-				alignment[0].insert(0,'-')
-				alignment[1].insert(0,seqB[loc[0]-1])
-				loc = (loc[0]-1,loc[1])
-			elif direction=='--': # margin hit, go left
+		print loc
+		print alignment
+		if loc[0]==0 or loc[1]==0: #margin hit
+			if trackIx[loc[0]][loc[1]]=='--': # top margin hit, go left
 				which = 2
 				alignment[0].insert(0,seqA[loc[1]-1])
 				alignment[1].insert(0,'-')
 				loc = (loc[0],loc[1]-1)
+			elif trackIy[loc[0]][loc[1]]=='||': # left margin hit, go up
+				which = 1
+				alignment[0].insert(0,'-')
+				alignment[1].insert(0,seqB[loc[0]-1])
+				loc = (loc[0]-1,loc[1])
+		elif which==0:
+			direction = trackIy[loc[0]][loc[1]]
+			if direction=='-': which = 0 #from Iy
+			elif direction=='/': which = 1 #from M
+			alignment[0].insert(0,seqA[loc[1]-1])
+			alignment[1].insert(0,'-')
+			loc = (loc[0],loc[1]-1)
+		elif which==2:
+			direction = trackIx[loc[0]][loc[1]]
+			if direction=='|': which = 1 #from M
+			elif direction=='\\': which = 2 #from Ix
+			alignment[0].insert(0,'-')
+			alignment[1].insert(0,seqB[loc[0]-1])
+			loc = (loc[0]-1,loc[1])
 		elif which==1:
 			direction = trackM[loc[0]][loc[1]]
 			alignment[0].insert(0,seqA[loc[1]-1])
@@ -217,6 +225,9 @@ def needle(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 	#pprint(alignment)
 	for i in range(len(alignment)): print ''.join(alignment[i])
 	
+	return
+
+def water(seqA,seqB,gap,extend,match=None,mismatch=None,matrixName=None):
 	return
 
 def createMatrixOfPairScores(seqA,seqB,match=None,mismatch=None,matrix=None):
@@ -242,8 +253,8 @@ def createMatrixOfPairScores(seqA,seqB,match=None,mismatch=None,matrix=None):
 
 if len(sys.argv)!=1 and len(sys.argv)!=7 and len(sys.argv)!=8:
 	print "Usage: python align_affine.py"
-	print "Usage: python align.py global blossum50 gap extend HEAGAWGHEE PAWHEAE"
-	print "Usage: python align.py global match mismatch gap extend HEAGAWGHEE PAWHEAE"
+	print "Usage: python align_affine.py global blosum50 gap extend HEAGAWGHEE PAWHEAE"
+	print "Usage: python align_affine.py global match mismatch gap extend HEAGAWGHEE PAWHEAE"
 	exit(0)
 elif len(sys.argv)==1:
 	#Default behaviour
@@ -260,20 +271,19 @@ elif len(sys.argv)==1:
 	seqA = "VLSPADK"
 	seqB = "HLAESK"
 	needle(seqA,seqB,gap=12,extend=2,matrixName="blosum50")
-'''elif len(sys.argv)==6 or len(sys.argv)==7:
+elif len(sys.argv)==7 or len(sys.argv)==8:
 	#Alignment according to the received arguments
 	if sys.argv[1]=="global":
-		if len(sys.argv)==6:
-			needle(sys.argv[4],sys.argv[5],gap=sys.argv[3],matrixName=sys.argv[2])
+		if len(sys.argv)==7:
+			needle(sys.argv[5],sys.argv[6],gap=sys.argv[3],extend=sys.argv[4],matrixName=sys.argv[2])
 		else:
-			needle(sys.argv[5],sys.argv[6],gap=sys.argv[4],match=sys.argv[2],mismatch=sys.argv[3])
+			needle(sys.argv[6],sys.argv[7],gap=sys.argv[4],extend=sys.argv[5],match=sys.argv[2],mismatch=sys.argv[3])
 	elif sys.argv[1]=="local":
-		if len(sys.argv)==6:
-			water(sys.argv[4],sys.argv[5],gap=sys.argv[3],matrixName=sys.argv[2])
+		if len(sys.argv)==7:
+			water(sys.argv[5],sys.argv[6],gap=sys.argv[3],extend=sys.argv[4],matrixName=sys.argv[2])
 		else:
-			water(sys.argv[5],sys.argv[6],gap=sys.argv[4],match=sys.argv[2],mismatch=sys.argv[3])
+			water(sys.argv[6],sys.argv[7],gap=sys.argv[4],extend=sys.argv[5],match=sys.argv[2],mismatch=sys.argv[3])
 	else:
-		print "Usage: python align.py global blossum50 gap HEAGAWGHEE PAWHEAE"
+		print "Usage: python align_affine.py global blosum50 gap extend HEAGAWGHEE PAWHEAE"
 		print sys.argv[1]+" is not a valid arg. Use global or local."
 		exit(0)
-'''
