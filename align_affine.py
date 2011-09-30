@@ -3,8 +3,6 @@ using the Needleman-Wunch algorithm for global alignment, and the
 Smith-Waterman algorithm for local alignment. It uses an affine 
 gap model.
 
-Not yet finished. No local alignment. Yet. 
-
 Author: Paula Petcu
 Created: 28 September 2011
 Licensed under: GNU General Public License v2
